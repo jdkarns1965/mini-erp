@@ -1,0 +1,55 @@
+# Environment files
+.env
+config/database.php
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+/var/log/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Dependencies (if using Composer)
+vendor/
+composer.lock
+
+# Build files
+dist/
+build/
+
+# Cache
+cache/
+*.cache
+
+# Backup files
+backup/
+*.bak
+*.backup
+
+# Session files
+sessions/
+
+# Upload directories (depending on implementation)
+uploads/private/
+
+# Database dumps
+*.sql
+*.db
+*.sqlite
+
+# PHP specific
+.phpunit.result.cache
