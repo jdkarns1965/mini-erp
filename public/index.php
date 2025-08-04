@@ -1,12 +1,21 @@
 <?php
 /**
- * Mini ERP Inventory Tracking System
- * Main entry point
+ * Mini ERP Manufacturing Inventory Tracking System
+ * Main entry point with authentication
  */
 
-// Load configuration
+// Load configuration and classes
 require_once '../config/config.php';
 require_once '../config/database.php';
+require_once '../src/classes/Auth.php';
+
+// Initialize authentication
+$db = new Database();
+$auth = new Auth($db);
+
+// Require authentication for main system
+$auth->requireAuth('login.php');
+$current_user = $auth->getCurrentUser();
 
 // Simple routing
 $request = $_SERVER['REQUEST_URI'];
@@ -25,14 +34,33 @@ $path = str_replace('/mini-erp/public', '', $path);
 <body>
     <div class="container">
         <header>
-            <h1>Mini ERP - Inventory Tracking System</h1>
+            <div class="header-content">
+                <div class="header-left">
+                    <h1>Mini ERP - Manufacturing System</h1>
+                    <p class="subtitle">Plastic Injection Molding Traceability</p>
+                </div>
+                <div class="header-right">
+                    <span class="user-info">
+                        Welcome, <strong><?php echo htmlspecialchars($current_user['full_name']); ?></strong> 
+                        (<?php echo ucfirst(str_replace('_', ' ', $current_user['role'])); ?>)
+                    </span>
+                    <a href="logout.php" class="logout-btn">Logout</a>
+                </div>
+            </div>
             <nav>
                 <ul>
-                    <li><a href="/">Dashboard</a></li>
-                    <li><a href="/products">Products</a></li>
-                    <li><a href="/categories">Categories</a></li>
-                    <li><a href="/suppliers">Suppliers</a></li>
-                    <li><a href="/stock">Stock Movements</a></li>
+                    <li><a href="index.php" <?php echo ($path === '/' || $path === '' || $path === '/index.php') ? 'class="active"' : ''; ?>>Dashboard</a></li>
+                    <li><a href="materials.php">Materials</a></li>
+                    <li><a href="inventory.php">Inventory</a></li>
+                    <li><a href="recipes.php">Recipes</a></li>
+                    <li><a href="jobs.php">Production Jobs</a></li>
+                    <li><a href="traceability.php">Traceability</a></li>
+                    <?php if ($auth->hasRole(['admin', 'supervisor'])): ?>
+                    <li><a href="reports.php">Reports</a></li>
+                    <?php endif; ?>
+                    <?php if ($auth->hasRole(['admin'])): ?>
+                    <li><a href="admin.php">Admin</a></li>
+                    <?php endif; ?>
                 </ul>
             </nav>
         </header>
@@ -54,13 +82,51 @@ $path = str_replace('/mini-erp/public', '', $path);
                 echo "<p><strong>Current Path:</strong> " . $path . "</p>";
                 echo "</div>";
                 
-                if ($path === '/' || $path === '') {
-                    echo "<h2>Welcome to Mini ERP</h2>";
-                    echo "<p>Your inventory tracking system is ready!</p>";
-                    echo "<div class='quick-actions'>";
-                    echo "<a href='/products' class='btn'>Manage Products</a>";
-                    echo "<a href='/stock' class='btn'>Stock Movements</a>";
-                    echo "<a href='/reports' class='btn'>Reports</a>";
+                if ($path === '/' || $path === '' || $path === '/index.php') {
+                    echo "<h2>Dashboard - Manufacturing Overview</h2>";
+                    
+                    // Role-specific quick actions
+                    echo "<div class='role-info'>";
+                    echo "<p><strong>Your Role:</strong> " . ucfirst(str_replace('_', ' ', $current_user['role'])) . "</p>";
+                    echo "</div>";
+                    
+                    echo "<div class='dashboard-widgets'>";
+                    
+                    // Material Handler actions
+                    if ($auth->hasRole(['admin', 'material_handler'])) {
+                        echo "<div class='widget'>";
+                        echo "<h3>Material Management</h3>";
+                        echo "<a href='inventory.php' class='btn'>View Inventory</a>";
+                        echo "<a href='materials.php?action=receive' class='btn'>Receive Materials</a>";
+                        echo "</div>";
+                    }
+                    
+                    // Supervisor/Quality actions
+                    if ($auth->hasRole(['admin', 'supervisor', 'quality_inspector'])) {
+                        echo "<div class='widget'>";
+                        echo "<h3>Production Control</h3>";
+                        echo "<a href='jobs.php' class='btn'>Production Jobs</a>";
+                        echo "<a href='recipes.php' class='btn'>Recipe Management</a>";
+                        echo "</div>";
+                    }
+                    
+                    // Traceability for all roles
+                    echo "<div class='widget'>";
+                    echo "<h3>Traceability</h3>";
+                    echo "<a href='traceability.php' class='btn'>Lot Lookup</a>";
+                    echo "<a href='traceability.php?type=forward' class='btn'>Forward Trace</a>";
+                    echo "<a href='traceability.php?type=backward' class='btn'>Backward Trace</a>";
+                    echo "</div>";
+                    
+                    // Admin actions
+                    if ($auth->hasRole(['admin'])) {
+                        echo "<div class='widget'>";
+                        echo "<h3>Administration</h3>";
+                        echo "<a href='admin.php?section=users' class='btn'>User Management</a>";
+                        echo "<a href='admin.php?section=audit' class='btn'>Audit Log</a>";
+                        echo "</div>";
+                    }
+                    
                     echo "</div>";
                 }
                 
