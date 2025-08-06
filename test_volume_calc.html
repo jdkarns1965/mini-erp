@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Volume Calculation Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .form-group { margin: 10px 0; }
+        label { display: inline-block; width: 200px; }
+        input { padding: 5px; width: 150px; transition: background-color 0.3s ease; }
+        .test-result { margin: 20px 0; padding: 10px; background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <h2>Volume Calculation Test</h2>
+    
+    <div class="form-group">
+        <label for="quoted_monthly_volume">Monthly Volume:</label>
+        <input type="number" id="quoted_monthly_volume" name="quoted_monthly_volume" placeholder="Enter monthly volume">
+    </div>
+    
+    <div class="form-group">
+        <label for="quoted_annual_volume">Annual Volume:</label>
+        <input type="number" id="quoted_annual_volume" name="quoted_annual_volume" placeholder="Should auto-calculate" readonly>
+    </div>
+    
+    <div class="test-result">
+        <h3>Test Cases:</h3>
+        <button onclick="testCase(50000)">Test: 50,000 monthly</button>
+        <button onclick="testCase(25000)">Test: 25,000 monthly</button>
+        <button onclick="testCase(1000)">Test: 1,000 monthly</button>
+        <button onclick="clearFields()">Clear</button>
+    </div>
+
+    <script>
+        // Auto-calculate annual volume from monthly volume
+        document.addEventListener('DOMContentLoaded', function() {
+            const monthlyInput = document.getElementById('quoted_monthly_volume');
+            const annualInput = document.getElementById('quoted_annual_volume');
+            
+            if (monthlyInput && annualInput) {
+                console.log('Volume calculation loaded');
+                
+                // Simple calculation function
+                function calculateAnnual() {
+                    const monthly = parseFloat(monthlyInput.value) || 0;
+                    const annual = monthly * 12;
+                    
+                    console.log('Monthly:', monthly, 'Annual:', annual);
+                    
+                    annualInput.value = annual > 0 ? annual : '';
+                    
+                    // Visual styling for calculated field
+                    if (annual > 0) {
+                        annualInput.style.backgroundColor = '#f0f8ff';
+                        annualInput.title = monthly.toLocaleString() + ' × 12 = ' + annual.toLocaleString();
+                    } else {
+                        annualInput.style.backgroundColor = '';
+                        annualInput.title = '';
+                    }
+                }
+                
+                // Update on every keystroke
+                monthlyInput.addEventListener('input', calculateAnnual);
+                monthlyInput.addEventListener('change', calculateAnnual);
+                
+                // Calculate on page load
+                calculateAnnual();
+                
+                // Test functions
+                window.testCase = function(monthlyVol) {
+                    monthlyInput.value = monthlyVol;
+                    calculateAnnual();
+                };
+                
+                window.clearFields = function() {
+                    monthlyInput.value = '';
+                    calculateAnnual();
+                };
+            }
+        });
+    </script>
+</body>
+</html>

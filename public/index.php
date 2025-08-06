@@ -53,6 +53,7 @@ $path = str_replace('/mini-erp/public', '', $path);
                     <li><a href="materials.php">Materials</a></li>
                     <li><a href="inventory.php">Inventory</a></li>
                     <li><a href="recipes.php">Recipes</a></li>
+                    <li><a href="products.php">Products</a></li>
                     <li><a href="jobs.php">Production Jobs</a></li>
                     <li><a href="traceability.php">Traceability</a></li>
                     <?php if ($auth->hasRole(['admin', 'supervisor'])): ?>
@@ -107,6 +108,15 @@ $path = str_replace('/mini-erp/public', '', $path);
                         echo "<h3>Production Control</h3>";
                         echo "<a href='jobs.php' class='btn'>Production Jobs</a>";
                         echo "<a href='recipes.php' class='btn'>Recipe Management</a>";
+                        echo "</div>";
+                    }
+                    
+                    // Products Master for authorized users
+                    if ($auth->hasRole(['admin', 'supervisor', 'material_handler'])) {
+                        echo "<div class='widget'>";
+                        echo "<h3>Products Master</h3>";
+                        echo "<a href='products.php' class='btn'>View Products</a>";
+                        echo "<a href='products.php?action=add' class='btn'>Add New Product</a>";
                         echo "</div>";
                     }
                     

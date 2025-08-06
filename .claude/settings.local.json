@@ -2,7 +2,17 @@
   "permissions": {
     "allow": [
       "Bash(lsb_release:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(mysql:*)",
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(php:*)",
+      "Bash(sudo apache2ctl:*)",
+      "Bash(sudo netstat:*)",
+      "Bash(apache2ctl:*)",
+      "Bash(ss:*)",
+      "Bash(curl:*)"
     ],
     "deny": []
   }
