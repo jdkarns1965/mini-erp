@@ -12,7 +12,15 @@
       "Bash(sudo netstat:*)",
       "Bash(apache2ctl:*)",
       "Bash(ss:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(php:*)",
+      "Bash(grep:*)",
+      "Bash(for file in jobs.php traceability.php reports.php admin.php)",
+      "Bash(do echo \"=== $file ===\")",
+      "Bash(done)",
+      "Bash(for file in traceability.php reports.php admin.php)",
+      "Bash(do echo \"=== Converting $file ===\")",
+      "Bash(python3:*)"
     ],
     "deny": []
   }
