@@ -28,24 +28,57 @@ $message_type = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_receive) {
     if (isset($_POST['receive_material'])) {
         try {
+            $pdo->beginTransaction();
+            
+            $entries_count = (int)($_POST['entries_count'] ?? 1);
+            $processed_entries = 0;
+            
             $stmt = $pdo->prepare("
-                INSERT INTO inventory (material_id, lot_number, original_weight, current_weight, container_type, 
-                                     supplier_lot_number, received_date, received_by) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO inventory (material_id, lot_number, quantity_received, quantity_available, 
+                                     supplier_lot_number, location, received_date, received_by, container_type) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
-            $stmt->execute([
-                $_POST['material_id'],
-                $_POST['lot_number'],
-                $_POST['weight_lbs'],
-                $_POST['weight_lbs'], // current_weight = original_weight initially
-                $_POST['container_type'],
-                $_POST['supplier_lot'],
-                $_POST['date_received'],
-                $current_user['id']
-            ]);
-            $message = 'Material received successfully!';
+            
+            for ($i = 1; $i <= $entries_count; $i++) {
+                // Skip empty entries
+                if (empty($_POST["weight_lbs_$i"])) {
+                    continue;
+                }
+                
+                // Determine lot number - manufacturer assigned only
+                $lot_number = '';
+                if (!empty($_POST['use_same_lot']) && !empty($_POST['base_lot_number'])) {
+                    // All containers have the same manufacturer lot number
+                    $lot_number = $_POST['base_lot_number'];
+                } else {
+                    // Each container has its own manufacturer lot number
+                    $lot_number = $_POST["lot_number_$i"] ?? '';
+                }
+                
+                // Skip if no lot number is determined
+                if (empty($lot_number)) {
+                    continue;
+                }
+                
+                $stmt->execute([
+                    $_POST['material_id'],
+                    $lot_number,
+                    $_POST["weight_lbs_$i"],
+                    $_POST["weight_lbs_$i"], // quantity_available = quantity_received initially
+                    $_POST["supplier_lot_$i"] ?? $_POST['supplier_lot_base'],
+                    $_POST["location_$i"] ?? $_POST['location_base'],
+                    $_POST['date_received'],
+                    $current_user['id'],
+                    $_POST["container_type_$i"] ?? 'gaylord'
+                ]);
+                $processed_entries++;
+            }
+            
+            $pdo->commit();
+            $message = "Successfully received $processed_entries entries of material!";
             $message_type = 'success';
         } catch (Exception $e) {
+            $pdo->rollBack();
             $message = 'Error receiving material: ' . $e->getMessage();
             $message_type = 'error';
         }
@@ -57,11 +90,11 @@ try {
     $inventory = $pdo->query("
         SELECT i.*, m.material_code, m.material_name, m.material_type,
                u.full_name as received_by_name,
-               CASE WHEN i.current_weight > 0 THEN 'Available' ELSE 'Empty' END as status
+               CASE WHEN i.quantity_available > 0 THEN 'Available' ELSE 'Empty' END as status
         FROM inventory i
         JOIN materials m ON i.material_id = m.id
         LEFT JOIN users u ON i.received_by = u.id
-        WHERE i.current_weight > 0
+        WHERE i.quantity_available > 0
         ORDER BY i.received_date ASC, i.id ASC
     ")->fetchAll();
 } catch (Exception $e) {
@@ -82,50 +115,10 @@ try {
 }
 
 $page_title = 'Inventory';
+
+// Include header component
+include '../src/includes/header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $page_title; ?> - Mini ERP</title>
-    <link href="css/style.css" rel="stylesheet">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <div class="header-content">
-                <div class="header-left">
-                    <h1>Mini ERP - Manufacturing System</h1>
-                    <p class="subtitle">Plastic Injection Molding Traceability</p>
-                </div>
-                <div class="header-right">
-                    <span class="user-info">
-                        Welcome, <strong><?php echo htmlspecialchars($current_user['full_name']); ?></strong> 
-                        (<?php echo ucfirst(str_replace('_', ' ', $current_user['role'])); ?>)
-                    </span>
-                    <a href="logout.php" class="logout-btn">Logout</a>
-                </div>
-            </div>
-            <nav>
-                <ul>
-                    <li><a href="index.php">Dashboard</a></li>
-                    <li><a href="materials.php">Materials</a></li>
-                    <li><a href="inventory.php" class="active">Inventory</a></li>
-                    <li><a href="recipes.php">Recipes</a></li>
-                    <li><a href="jobs.php">Production Jobs</a></li>
-                    <li><a href="traceability.php">Traceability</a></li>
-                    <?php if ($auth->hasRole(['admin', 'supervisor'])): ?>
-                    <li><a href="reports.php">Reports</a></li>
-                    <?php endif; ?>
-                    <?php if ($auth->hasRole(['admin'])): ?>
-                    <li><a href="admin.php">Admin</a></li>
-                    <?php endif; ?>
-                </ul>
-            </nav>
-        </header>
-        
-        <main>
             <h2><?php echo $page_title; ?> Management</h2>
             
             <?php if ($message): ?>
@@ -137,55 +130,92 @@ $page_title = 'Inventory';
             <?php if ($can_receive): ?>
             <div class="form-section">
                 <h3>Receive Material</h3>
-                <form method="POST" class="receive-form">
+                <form method="POST" class="receive-form" id="receive-form">
                     <div class="form-row">
+                        <div class="form-group">
+                            <label for="material_code_input">Material Code (Type or Scan):</label>
+                            <input type="text" id="material_code_input" name="material_code_input" 
+                                   placeholder="e.g., 90006" 
+                                   title="Type or scan material code">
+                            <small>Type or scan the material code to auto-select</small>
+                        </div>
                         <div class="form-group">
                             <label for="material_id">Material:</label>
                             <select id="material_id" name="material_id" required>
                                 <option value="">Select Material</option>
                                 <?php foreach ($materials as $material): ?>
-                                    <option value="<?php echo $material['id']; ?>">
+                                    <option value="<?php echo $material['id']; ?>" data-code="<?php echo strtoupper($material['material_code']); ?>">
                                         <?php echo htmlspecialchars($material['material_code'] . ' - ' . $material['material_name']); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="lot_number">Internal Lot Number:</label>
+                            <label for="lot_number">Manufacturer Lot Number:</label>
                             <input type="text" id="lot_number" name="lot_number" required 
-                                   placeholder="Internal tracking lot">
+                                   placeholder="Lot number from container/bag label">
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="supplier_lot">Supplier Lot:</label>
-                            <input type="text" id="supplier_lot" name="supplier_lot" required 
-                                   placeholder="Supplier's lot number">
+                            <label for="supplier_lot_base">Supplier Lot (Base):</label>
+                            <input type="text" id="supplier_lot_base" name="supplier_lot_base" 
+                                   placeholder="Base supplier lot number">
+                            <small>Will be used for all entries unless overridden</small>
                         </div>
                         <div class="form-group">
-                            <label for="weight_lbs">Weight (lbs):</label>
-                            <input type="number" id="weight_lbs" name="weight_lbs" step="0.1" required 
-                                   placeholder="Weight in pounds">
+                            <label for="location_base">Location (Base):</label>
+                            <input type="text" id="location_base" name="location_base" 
+                                   placeholder="Base storage location">
+                            <small>Will be used for all entries unless overridden</small>
                         </div>
                     </div>
                     <div class="form-row">
-                        <div class="form-group">
-                            <label for="container_type">Container Type:</label>
-                            <select id="container_type" name="container_type" required>
-                                <option value="">Select Container</option>
-                                <option value="gaylord">Gaylord Box (1320-2200 lbs)</option>
-                                <option value="bag_skid">Bag Skid (30-40 bags)</option>
-                                <option value="concentrate_box">Concentrate Box (50 lbs)</option>
-                                <option value="partial">Partial Container</option>
-                            </select>
-                        </div>
                         <div class="form-group">
                             <label for="date_received">Date Received:</label>
                             <input type="date" id="date_received" name="date_received" required 
                                    value="<?php echo date('Y-m-d'); ?>">
                         </div>
+                        <div class="form-group">
+                            <label for="entries_count">Number of Entries:</label>
+                            <select id="entries_count" name="entries_count" onchange="updateEntryFields()">
+                                <option value="1">1 Entry</option>
+                                <option value="2">2 Entries</option>
+                                <option value="3">3 Entries</option>
+                                <option value="4">4 Entries</option>
+                                <option value="5">5 Entries</option>
+                                <option value="6">6 Entries</option>
+                                <option value="7">7 Entries</option>
+                                <option value="8">8 Entries</option>
+                                <option value="9">9 Entries</option>
+                                <option value="10">10 Entries</option>
+                            </select>
+                        </div>
                     </div>
-                    <button type="submit" name="receive_material" class="btn btn-primary">Receive Material</button>
+                    
+                    <div class="form-row" id="multi-entry-options" style="display: none;">
+                        <div class="form-group">
+                            <label for="base_lot_number">Manufacturer Lot Number:</label>
+                            <input type="text" id="base_lot_number" name="base_lot_number" 
+                                   placeholder="Lot number from manufacturer label">
+                            <small class="form-help">Enter the lot number printed/labeled on containers by the manufacturer</small>
+                        </div>
+                        <div class="form-group">
+                            <div class="checkbox-group">
+                                <label>
+                                    <input type="checkbox" id="use_same_lot" name="use_same_lot" value="1" onchange="toggleLotNumberMode()">
+                                    All containers have the same manufacturer lot number
+                                </label>
+                                <small class="form-help">Check this if all containers/bags have identical manufacturer lot numbers</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="entries-container">
+                        <!-- Dynamic entry fields will be inserted here -->
+                    </div>
+                    
+                    <button type="submit" name="receive_material" class="btn btn-primary">Receive All Entries</button>
                 </form>
             </div>
             <?php endif; ?>
@@ -230,7 +260,7 @@ $page_title = 'Inventory';
                                 <th>Material</th>
                                 <th>Internal Lot</th>
                                 <th>Supplier Lot</th>
-                                <th>Container</th>
+                                <th>Location</th>
                                 <th>Received</th>
                                 <th>Original (lbs)</th>
                                 <th>Remaining (lbs)</th>
@@ -245,7 +275,7 @@ $page_title = 'Inventory';
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($inventory as $index => $item): ?>
-                                    <tr class="<?php echo $item['current_weight'] <= 0 ? 'empty' : ''; ?>" 
+                                    <tr class="<?php echo $item['quantity_available'] <= 0 ? 'empty' : ''; ?>" 
                                         data-material-type="<?php echo htmlspecialchars($item['material_type']); ?>">
                                         <td>
                                             <strong><?php echo htmlspecialchars($item['material_code']); ?></strong><br>
@@ -253,13 +283,13 @@ $page_title = 'Inventory';
                                         </td>
                                         <td class="lot-number"><?php echo htmlspecialchars($item['lot_number']); ?></td>
                                         <td><?php echo htmlspecialchars($item['supplier_lot_number']); ?></td>
-                                        <td class="container-type">
-                                            <?php echo ucfirst(str_replace('_', ' ', $item['container_type'])); ?>
+                                        <td class="location">
+                                            <?php echo htmlspecialchars($item['location'] ?? 'N/A'); ?>
                                         </td>
                                         <td><?php echo date('M j, Y', strtotime($item['received_date'])); ?></td>
-                                        <td class="weight"><?php echo number_format($item['original_weight'], 1); ?></td>
+                                        <td class="weight"><?php echo number_format($item['quantity_received'], 1); ?></td>
                                         <td class="weight remaining">
-                                            <?php echo number_format($item['current_weight'], 1); ?>
+                                            <?php echo number_format($item['quantity_available'], 1); ?>
                                         </td>
                                         <td class="status <?php echo strtolower($item['status']); ?>">
                                             <?php echo $item['status']; ?>
@@ -272,14 +302,7 @@ $page_title = 'Inventory';
                     </table>
                 </div>
             </div>
-        </main>
-        
-        <footer>
-            <p>&copy; 2025 Mini ERP System</p>
-        </footer>
-    </div>
-
-    <script>
+            <script>
         // Inventory search and filter functionality
         document.addEventListener('DOMContentLoaded', function() {
             const searchInput = document.getElementById('search_materials');
@@ -372,6 +395,261 @@ $page_title = 'Inventory';
                 }
             });
         });
+
+        // Dynamic Entry Fields Management
+        function updateEntryFields() {
+            const entriesCount = parseInt(document.getElementById('entries_count').value);
+            const container = document.getElementById('entries-container');
+            const multiOptions = document.getElementById('multi-entry-options');
+            
+            // Show/hide multi-entry options
+            if (entriesCount > 1) {
+                multiOptions.style.display = 'block';
+            } else {
+                multiOptions.style.display = 'none';
+                // Reset checkboxes when going back to single entry
+                document.getElementById('use_same_lot').checked = false;
+                document.getElementById('base_lot_number').value = '';
+            }
+            
+            container.innerHTML = '';
+            
+            for (let i = 1; i <= entriesCount; i++) {
+                const entryDiv = document.createElement('div');
+                entryDiv.className = 'entry-section';
+                entryDiv.innerHTML = `
+                    <h4>Entry #${i}</h4>
+                    <div class="form-row">
+                        <div class="form-group lot-number-group">
+                            <label for="lot_number_${i}">Manufacturer Lot Number:</label>
+                            <input type="text" id="lot_number_${i}" name="lot_number_${i}" 
+                                   placeholder="Lot number from container/bag label">
+                            <small class="lot-help">Enter the lot number printed on this specific container/bag</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="supplier_lot_${i}">Supplier Lot (Override):</label>
+                            <input type="text" id="supplier_lot_${i}" name="supplier_lot_${i}" 
+                                   placeholder="Leave empty to use base">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="weight_lbs_${i}">Weight (lbs):</label>
+                            <input type="number" id="weight_lbs_${i}" name="weight_lbs_${i}" step="0.1" required 
+                                   placeholder="Weight in pounds">
+                        </div>
+                        <div class="form-group">
+                            <label for="container_type_${i}">Container Type:</label>
+                            <select id="container_type_${i}" name="container_type_${i}">
+                                <option value="gaylord">Gaylord Box</option>
+                                <option value="bag_skid">Bag Skid</option>
+                                <option value="partial">Partial Container</option>
+                                <option value="box_50lb">50lb Box</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="location_${i}">Location (Override):</label>
+                            <input type="text" id="location_${i}" name="location_${i}" 
+                                   placeholder="Leave empty to use base">
+                        </div>
+                        <div class="form-group">
+                            <!-- Spacer -->
+                        </div>
+                    </div>
+                `;
+                container.appendChild(entryDiv);
+            }
+            
+            // Auto-focus appropriate field
+            setTimeout(() => {
+                const baseLotField = document.getElementById('base_lot_number');
+                const firstWeightField = document.getElementById('weight_lbs_1');
+                const firstLotField = document.getElementById('lot_number_1');
+                
+                if (entriesCount > 1 && baseLotField && baseLotField.offsetParent !== null) {
+                    baseLotField.focus();
+                } else if (entriesCount === 1 && firstLotField) {
+                    firstLotField.focus();
+                } else if (firstWeightField) {
+                    firstWeightField.focus();
+                }
+            }, 100);
+        }
+        
+        function toggleLotNumberMode() {
+            const useSameLot = document.getElementById('use_same_lot').checked;
+            const baseLotField = document.getElementById('base_lot_number');
+            const lotGroups = document.querySelectorAll('.lot-number-group');
+            const lotHelps = document.querySelectorAll('.lot-help');
+            
+            if (useSameLot) {
+                baseLotField.required = true;
+                baseLotField.style.backgroundColor = '#fff3cd';
+                baseLotField.style.borderColor = '#ffc107';
+                
+                // Update help text
+                lotHelps.forEach(help => {
+                    help.textContent = 'Individual lot fields will be ignored - all entries will use the shared manufacturer lot';
+                    help.style.color = '#856404';
+                });
+                
+                // Disable individual lot fields
+                lotGroups.forEach((group, index) => {
+                    const input = group.querySelector('input');
+                    input.style.backgroundColor = '#f8f9fa';
+                    input.style.color = '#6c757d';
+                    input.disabled = true;
+                    input.required = false;
+                });
+                
+            } else {
+                baseLotField.required = false;
+                baseLotField.style.backgroundColor = '';
+                baseLotField.style.borderColor = '';
+                
+                // Reset help text
+                lotHelps.forEach((help, index) => {
+                    const baseLot = baseLotField.value.trim();
+                    if (baseLot) {
+                        help.textContent = `Will use manufacturer lot: ${baseLot}`;
+                        help.style.color = '#28a745';
+                    } else {
+                        help.textContent = 'Enter the lot number printed on this specific container/bag';
+                        help.style.color = '#6c757d';
+                    }
+                });
+                
+                // Enable individual lot fields
+                lotGroups.forEach(group => {
+                    const input = group.querySelector('input');
+                    input.style.backgroundColor = '';
+                    input.style.color = '';
+                    input.disabled = false;
+                    input.required = false; // Will be handled by PHP logic
+                });
+            }
+        }
+        
+        // Update lot preview when manufacturer lot changes
+        function updateLotPreview() {
+            const manufacturerLot = document.getElementById('base_lot_number').value.trim();
+            const useSameLot = document.getElementById('use_same_lot').checked;
+            const lotHelps = document.querySelectorAll('.lot-help');
+            
+            if (!useSameLot && manufacturerLot) {
+                lotHelps.forEach((help, index) => {
+                    help.textContent = `Will use manufacturer lot: ${manufacturerLot}`;
+                    help.style.color = '#28a745';
+                });
+            } else if (!useSameLot) {
+                lotHelps.forEach(help => {
+                    help.textContent = 'Enter the lot number printed on this specific container/bag';
+                    help.style.color = '#6c757d';
+                });
+            }
+        }
+        
+        // Initialize with 1 entry
+        document.addEventListener('DOMContentLoaded', function() {
+            updateEntryFields();
+            
+            // Add event listener for base lot number changes
+            const baseLotField = document.getElementById('base_lot_number');
+            if (baseLotField) {
+                baseLotField.addEventListener('input', updateLotPreview);
+            }
+        });
+        
+        // Material Code Auto-Selection
+        document.addEventListener('DOMContentLoaded', function() {
+            const materialCodeInput = document.getElementById('material_code_input');
+            const materialSelect = document.getElementById('material_id');
+            
+            if (materialCodeInput && materialSelect) {
+                
+                function selectMaterialByCode(code) {
+                    const upperCode = code.toUpperCase().trim();
+                    
+                    // Find matching option by data-code attribute
+                    const options = materialSelect.querySelectorAll('option[data-code]');
+                    let found = false;
+                    
+                    for (let option of options) {
+                        if (option.getAttribute('data-code') === upperCode) {
+                            materialSelect.value = option.value;
+                            found = true;
+                            
+                            // Visual feedback - highlight the select briefly
+                            materialSelect.style.backgroundColor = '#d4edda';
+                            materialSelect.style.borderColor = '#28a745';
+                            
+                            setTimeout(() => {
+                                materialSelect.style.backgroundColor = '';
+                                materialSelect.style.borderColor = '';
+                            }, 1000);
+                            
+                            break;
+                        }
+                    }
+                    
+                    if (!found && code.trim() !== '') {
+                        // Visual feedback - show not found
+                        materialCodeInput.style.backgroundColor = '#f8d7da';
+                        materialCodeInput.style.borderColor = '#dc3545';
+                        materialSelect.value = '';
+                        
+                        setTimeout(() => {
+                            materialCodeInput.style.backgroundColor = '';
+                            materialCodeInput.style.borderColor = '';
+                        }, 1000);
+                    }
+                    
+                    return found;
+                }
+                
+                // Auto-select on input (with debouncing for barcode scanners)
+                let timeout;
+                materialCodeInput.addEventListener('input', function() {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => {
+                        selectMaterialByCode(this.value);
+                    }, 300); // 300ms delay to handle fast barcode scanner input
+                });
+                
+                // Also trigger on Enter key (common for barcode scanners)
+                materialCodeInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        clearTimeout(timeout);
+                        selectMaterialByCode(this.value);
+                        
+                        // Move focus to next field
+                        document.getElementById('lot_number').focus();
+                    }
+                });
+                
+                // Handle manual selection - update code input
+                materialSelect.addEventListener('change', function() {
+                    const selectedOption = materialSelect.options[materialSelect.selectedIndex];
+                    if (selectedOption && selectedOption.hasAttribute('data-code')) {
+                        materialCodeInput.value = selectedOption.getAttribute('data-code');
+                    } else if (this.value === '') {
+                        materialCodeInput.value = '';
+                    }
+                });
+                
+                // Clear both when code input is cleared
+                materialCodeInput.addEventListener('input', function() {
+                    if (this.value.trim() === '') {
+                        materialSelect.value = '';
+                    }
+                });
+            }
+        });
     </script>
-</body>
-</html>
+<?php
+// Include footer component
+include '../src/includes/footer.php';
+?>

@@ -29,14 +29,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
     if (isset($_POST['add_material'])) {
         try {
             $stmt = $pdo->prepare("
-                INSERT INTO materials (material_code, material_name, material_type, supplier_name, created_by) 
+                INSERT INTO materials (material_code, material_name, material_type, supplier_id, created_by) 
                 VALUES (?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $_POST['material_code'],
                 $_POST['material_name'],
                 $_POST['material_type'],
-                $_POST['supplier_name'],
+                $_POST['supplier_id'],
                 $current_user['id']
             ]);
             $message = 'Material added successfully!';
@@ -46,14 +46,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
             $message_type = 'error';
         }
     }
+    
+    if (isset($_POST['edit_material'])) {
+        try {
+            $stmt = $pdo->prepare("
+                UPDATE materials SET 
+                    material_name = ?, 
+                    material_type = ?, 
+                    supplier_id = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([
+                $_POST['material_name'],
+                $_POST['material_type'],
+                $_POST['supplier_id'],
+                $_POST['material_id']
+            ]);
+            $message = 'Material updated successfully!';
+            $message_type = 'success';
+        } catch (Exception $e) {
+            $message = 'Error updating material: ' . $e->getMessage();
+            $message_type = 'error';
+        }
+    }
+    
+    if (isset($_POST['delete_material'])) {
+        try {
+            // Check if material is used in inventory or recipes
+            $usage_check = $pdo->prepare("
+                SELECT 
+                    (SELECT COUNT(*) FROM inventory WHERE material_id = ?) as inventory_count,
+                    (SELECT COUNT(*) FROM recipes WHERE base_material_id = ? OR concentrate_material_id = ?) as recipe_count
+            ");
+            $usage_check->execute([$_POST['material_id'], $_POST['material_id'], $_POST['material_id']]);
+            $usage = $usage_check->fetch();
+            
+            if ($usage['inventory_count'] > 0 || $usage['recipe_count'] > 0) {
+                // Soft delete by setting is_active = false
+                $stmt = $pdo->prepare("UPDATE materials SET is_active = 0 WHERE id = ?");
+                $stmt->execute([$_POST['material_id']]);
+                $message = 'Material deactivated (still used in inventory/recipes)';
+                $message_type = 'success';
+            } else {
+                // Hard delete if not used
+                $stmt = $pdo->prepare("DELETE FROM materials WHERE id = ?");
+                $stmt->execute([$_POST['material_id']]);
+                $message = 'Material deleted successfully!';
+                $message_type = 'success';
+            }
+        } catch (Exception $e) {
+            $message = 'Error deleting material: ' . $e->getMessage();
+            $message_type = 'error';
+        }
+    }
 }
 
 // Get all materials
 try {
     $materials = $pdo->query("
-        SELECT m.*, u.full_name as created_by_name
+        SELECT m.*, u.full_name as created_by_name, s.supplier_name, s.supplier_code
         FROM materials m
         LEFT JOIN users u ON m.created_by = u.id
+        LEFT JOIN suppliers s ON m.supplier_id = s.id
+        WHERE m.is_active = 1
         ORDER BY m.material_code
     ")->fetchAll();
 } catch (Exception $e) {
@@ -62,52 +117,37 @@ try {
     $message_type = 'error';
 }
 
+// Get suppliers for dropdown
+$suppliers = [];
+try {
+    $suppliers = $pdo->query("
+        SELECT id, supplier_name, supplier_code 
+        FROM suppliers 
+        WHERE is_active = 1 
+        ORDER BY supplier_name
+    ")->fetchAll();
+} catch (Exception $e) {
+    // Handle error silently for now
+}
+
+// Get material for editing if requested
+$edit_material = null;
+if (isset($_GET['edit']) && $can_manage) {
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM materials WHERE id = ? AND is_active = 1");
+        $stmt->execute([$_GET['edit']]);
+        $edit_material = $stmt->fetch();
+    } catch (Exception $e) {
+        $message = 'Error loading material for editing: ' . $e->getMessage();
+        $message_type = 'error';
+    }
+}
+
 $page_title = 'Materials';
+
+// Include header component
+include '../src/includes/header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $page_title; ?> - Mini ERP</title>
-    <link href="css/style.css" rel="stylesheet">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <div class="header-content">
-                <div class="header-left">
-                    <h1>Mini ERP - Manufacturing System</h1>
-                    <p class="subtitle">Plastic Injection Molding Traceability</p>
-                </div>
-                <div class="header-right">
-                    <span class="user-info">
-                        Welcome, <strong><?php echo htmlspecialchars($current_user['full_name']); ?></strong> 
-                        (<?php echo ucfirst(str_replace('_', ' ', $current_user['role'])); ?>)
-                    </span>
-                    <a href="logout.php" class="logout-btn">Logout</a>
-                </div>
-            </div>
-            <nav>
-                <ul>
-                    <li><a href="index.php">Dashboard</a></li>
-                    <li><a href="materials.php" class="active">Materials</a></li>
-                    <li><a href="inventory.php">Inventory</a></li>
-                    <li><a href="recipes.php">Recipes</a></li>
-                    <li><a href="products.php">Products</a></li>
-                    <li><a href="jobs.php">Production Jobs</a></li>
-                    <li><a href="traceability.php">Traceability</a></li>
-                    <?php if ($auth->hasRole(['admin', 'supervisor'])): ?>
-                    <li><a href="reports.php">Reports</a></li>
-                    <?php endif; ?>
-                    <?php if ($auth->hasRole(['admin'])): ?>
-                    <li><a href="admin.php">Admin</a></li>
-                    <?php endif; ?>
-                </ul>
-            </nav>
-        </header>
-        
-        <main>
             <h2><?php echo $page_title; ?> Management</h2>
             
             <?php if ($message): ?>
@@ -118,17 +158,24 @@ $page_title = 'Materials';
             
             <?php if ($can_manage): ?>
             <div class="form-section">
-                <h3>Add New Material</h3>
+                <h3><?php echo $edit_material ? 'Edit Material' : 'Add New Material'; ?></h3>
                 <form method="POST" class="material-form">
+                    <?php if ($edit_material): ?>
+                        <input type="hidden" name="material_id" value="<?php echo $edit_material['id']; ?>">
+                    <?php endif; ?>
+                    
                     <div class="form-row">
                         <div class="form-group">
                             <label for="material_code">Material Code:</label>
                             <input type="text" id="material_code" name="material_code" required 
-                                   placeholder="e.g., 90006, GRAY-ABC">
+                                   value="<?php echo htmlspecialchars($edit_material['material_code'] ?? ''); ?>"
+                                   placeholder="e.g., 90006, GRAY-ABC"
+                                   <?php echo $edit_material ? 'readonly' : ''; ?>>
                         </div>
                         <div class="form-group">
                             <label for="material_name">Material Name:</label>
                             <input type="text" id="material_name" name="material_name" required 
+                                   value="<?php echo htmlspecialchars($edit_material['material_name'] ?? ''); ?>"
                                    placeholder="Descriptive name">
                         </div>
                     </div>
@@ -137,19 +184,36 @@ $page_title = 'Materials';
                             <label for="material_type">Material Type:</label>
                             <select id="material_type" name="material_type" required>
                                 <option value="">Select Type</option>
-                                <option value="base_resin">Base Resin</option>
-                                <option value="color_concentrate">Color Concentrate</option>
-                                <option value="rework">Rework Material</option>
-                                <option value="additive">Additive</option>
+                                <option value="base_resin" <?php echo (isset($edit_material['material_type']) && $edit_material['material_type'] === 'base_resin') ? 'selected' : ''; ?>>Base Resin</option>
+                                <option value="color_concentrate" <?php echo (isset($edit_material['material_type']) && $edit_material['material_type'] === 'color_concentrate') ? 'selected' : ''; ?>>Color Concentrate</option>
+                                <option value="rework" <?php echo (isset($edit_material['material_type']) && $edit_material['material_type'] === 'rework') ? 'selected' : ''; ?>>Rework Material</option>
+                                <option value="additive" <?php echo (isset($edit_material['material_type']) && $edit_material['material_type'] === 'additive') ? 'selected' : ''; ?>>Additive</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="supplier_name">Supplier:</label>
-                            <input type="text" id="supplier_name" name="supplier_name" required 
-                                   placeholder="Supplier name">
+                            <label for="supplier_id">Supplier:</label>
+                            <select id="supplier_id" name="supplier_id" required>
+                                <option value="">Select Supplier</option>
+                                <?php foreach ($suppliers as $supplier): ?>
+                                    <option value="<?php echo $supplier['id']; ?>" 
+                                            <?php echo (isset($edit_material['supplier_id']) && $edit_material['supplier_id'] == $supplier['id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($supplier['supplier_name'] . ' (' . $supplier['supplier_code'] . ')'); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?php if (empty($suppliers)): ?>
+                                <small class="form-help">No suppliers found. Please add suppliers first.</small>
+                            <?php endif; ?>
                         </div>
                     </div>
-                    <button type="submit" name="add_material" class="btn btn-primary">Add Material</button>
+                    <div class="form-actions">
+                        <button type="submit" name="<?php echo $edit_material ? 'edit_material' : 'add_material'; ?>" class="btn btn-primary">
+                            <?php echo $edit_material ? 'Update Material' : 'Add Material'; ?>
+                        </button>
+                        <?php if ($edit_material): ?>
+                            <a href="materials.php" class="btn btn-secondary">Cancel</a>
+                        <?php endif; ?>
+                    </div>
                 </form>
             </div>
             <?php endif; ?>
@@ -166,12 +230,15 @@ $page_title = 'Materials';
                                 <th>Supplier</th>
                                 <th>Created</th>
                                 <th>Created By</th>
+                                <?php if ($can_manage): ?>
+                                <th>Actions</th>
+                                <?php endif; ?>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (empty($materials)): ?>
                                 <tr>
-                                    <td colspan="6" class="no-data">No materials found</td>
+                                    <td colspan="<?php echo $can_manage ? '7' : '6'; ?>" class="no-data">No materials found</td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($materials as $material): ?>
@@ -181,9 +248,18 @@ $page_title = 'Materials';
                                         <td class="material-type">
                                             <?php echo ucfirst(str_replace('_', ' ', $material['material_type'])); ?>
                                         </td>
-                                        <td><?php echo htmlspecialchars($material['supplier_name']); ?></td>
-                                        <td><?php echo date('Y-m-d', strtotime($material['created_date'])); ?></td>
+                                        <td><?php echo htmlspecialchars($material['supplier_name'] ? $material['supplier_name'] . ' (' . $material['supplier_code'] . ')' : 'No Supplier'); ?></td>
+                                        <td><?php echo date('Y-m-d', strtotime($material['created_at'])); ?></td>
                                         <td><?php echo htmlspecialchars($material['created_by_name'] ?? 'Unknown'); ?></td>
+                                        <?php if ($can_manage): ?>
+                                        <td class="actions">
+                                            <a href="materials.php?edit=<?php echo $material['id']; ?>" class="btn btn-small btn-secondary">Edit</a>
+                                            <form method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this material? This action cannot be undone.');">
+                                                <input type="hidden" name="material_id" value="<?php echo $material['id']; ?>">
+                                                <button type="submit" name="delete_material" class="btn btn-small btn-danger">Delete</button>
+                                            </form>
+                                        </td>
+                                        <?php endif; ?>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -191,11 +267,7 @@ $page_title = 'Materials';
                     </table>
                 </div>
             </div>
-        </main>
-        
-        <footer>
-            <p>&copy; 2025 Mini ERP System</p>
-        </footer>
-    </div>
-</body>
-</html>
+<?php
+// Include footer component
+include '../src/includes/footer.php';
+?>

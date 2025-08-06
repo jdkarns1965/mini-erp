@@ -109,8 +109,10 @@ if ($section === 'audit') {
 }
 
 $page_title = 'Administration';
+
+// Include header component
+include '../src/includes/header.php';
 ?>
-<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -137,18 +139,42 @@ $page_title = 'Administration';
             <nav>
                 <ul>
                     <li><a href="index.php">Dashboard</a></li>
-                    <li><a href="materials.php">Materials</a></li>
-                    <li><a href="inventory.php">Inventory</a></li>
-                    <li><a href="recipes.php">Recipes</a></li>
-                    <li><a href="jobs.php">Production Jobs</a></li>
-                    <li><a href="traceability.php">Traceability</a></li>
-                    <li><a href="reports.php">Reports</a></li>
-                    <li><a href="admin.php" class="active">Admin</a></li>
+                    
+                    <li class="nav-dropdown">
+                        <a href="#">Materials & Inventory</a>
+                        <ul class="dropdown-menu">
+                            <li><a href="materials.php">Materials Master</a></li>
+                            <li><a href="inventory.php">Inventory Management</a></li>
+                            <li><a href="recipes.php">Recipes</a></li>
+                        </ul>
+                    </li>
+                    
+                    <li class="nav-dropdown">
+                        <a href="#">Production</a>
+                        <ul class="dropdown-menu">
+                            <li><a href="products.php">Products</a></li>
+                            <li><a href="jobs.php">Production Jobs</a></li>
+                            <li><a href="traceability.php">Traceability</a></li>
+                        </ul>
+                    </li>
+                    
+                    <li class="nav-dropdown">
+                        <a href="#">Business Partners</a>
+                        <ul class="dropdown-menu">
+                            <li><a href="suppliers.php">Suppliers</a></li>
+                            <li><a href="customers.php">Customers</a></li>
+                        </ul>
+                    </li>
+                    
+                    <li class="nav-dropdown">
+                        <a href="#">System</a>
+                        <ul class="dropdown-menu">
+                            <li><a href="reports.php">Reports</a></li>
+                            <li><a href="admin.php" class="active">Administration</a></li>
+                        </ul>
+                    </li>
                 </ul>
             </nav>
-        </header>
-        
-        <main>
             <h2><?php echo $page_title; ?></h2>
             
             <?php if ($message): ?>
@@ -366,17 +392,12 @@ $page_title = 'Administration';
                     </div>
                 </div>
             <?php endif; ?>
-        </main>
-        
-        <footer>
-            <p>&copy; 2025 Mini ERP System</p>
-        </footer>
-    </div>
-    
-    <script>
+            <script>
         function showDetails(logId) {
             alert('Audit log details viewer will be implemented in Phase 1.4');
         }
     </script>
-</body>
-</html>
+<?php
+// Include footer component
+include '../src/includes/footer.php';
+?>

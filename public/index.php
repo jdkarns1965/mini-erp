@@ -22,51 +22,11 @@ $request = $_SERVER['REQUEST_URI'];
 $path = parse_url($request, PHP_URL_PATH);
 $path = str_replace('/mini-erp/public', '', $path);
 
+$page_title = 'Dashboard';
+
+// Include header component
+include '../src/includes/header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mini ERP - Inventory Tracking System</title>
-    <link href="css/style.css" rel="stylesheet">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <div class="header-content">
-                <div class="header-left">
-                    <h1>Mini ERP - Manufacturing System</h1>
-                    <p class="subtitle">Plastic Injection Molding Traceability</p>
-                </div>
-                <div class="header-right">
-                    <span class="user-info">
-                        Welcome, <strong><?php echo htmlspecialchars($current_user['full_name']); ?></strong> 
-                        (<?php echo ucfirst(str_replace('_', ' ', $current_user['role'])); ?>)
-                    </span>
-                    <a href="logout.php" class="logout-btn">Logout</a>
-                </div>
-            </div>
-            <nav>
-                <ul>
-                    <li><a href="index.php" <?php echo ($path === '/' || $path === '' || $path === '/index.php') ? 'class="active"' : ''; ?>>Dashboard</a></li>
-                    <li><a href="materials.php">Materials</a></li>
-                    <li><a href="inventory.php">Inventory</a></li>
-                    <li><a href="recipes.php">Recipes</a></li>
-                    <li><a href="products.php">Products</a></li>
-                    <li><a href="jobs.php">Production Jobs</a></li>
-                    <li><a href="traceability.php">Traceability</a></li>
-                    <?php if ($auth->hasRole(['admin', 'supervisor'])): ?>
-                    <li><a href="reports.php">Reports</a></li>
-                    <?php endif; ?>
-                    <?php if ($auth->hasRole(['admin'])): ?>
-                    <li><a href="admin.php">Admin</a></li>
-                    <?php endif; ?>
-                </ul>
-            </nav>
-        </header>
-        
-        <main>
             <?php
             try {
                 // Test database connection
@@ -97,8 +57,9 @@ $path = str_replace('/mini-erp/public', '', $path);
                     if ($auth->hasRole(['admin', 'material_handler'])) {
                         echo "<div class='widget'>";
                         echo "<h3>Material Management</h3>";
+                        echo "<a href='inventory.php' class='btn'>Receive Materials</a>";
                         echo "<a href='inventory.php' class='btn'>View Inventory</a>";
-                        echo "<a href='materials.php?action=receive' class='btn'>Receive Materials</a>";
+                        echo "<a href='materials.php' class='btn'>Add New Materials</a>";
                         echo "</div>";
                     }
                     
@@ -145,11 +106,7 @@ $path = str_replace('/mini-erp/public', '', $path);
                 echo "<p>Please ensure your database is configured correctly in config/.env</p>";
             }
             ?>
-        </main>
-        
-        <footer>
-            <p>&copy; 2025 Mini ERP System</p>
-        </footer>
-    </div>
-</body>
-</html>
+<?php
+// Include footer component
+include '../src/includes/footer.php';
+?>

@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
                 INSERT INTO products (
                     product_code, 
                     product_description, 
-                    customer_name, 
+                    customer_id, 
                     customer_part_number, 
                     product_category, 
                     status,
@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
             $stmt->execute([
                 $_POST['product_code'],
                 $_POST['product_description'],
-                $_POST['customer_name'],
+                $_POST['customer_id'],
                 $_POST['customer_part_number'],
                 $_POST['product_category'],
                 $_POST['status'],
@@ -154,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
             $stmt = $pdo->prepare("
                 UPDATE products SET 
                     product_description = ?, 
-                    customer_name = ?, 
+                    customer_id = ?, 
                     customer_part_number = ?, 
                     product_category = ?, 
                     status = ?,
@@ -169,13 +169,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
                     program_launch_date = ?,
                     program_end_date = ?,
                     volume_notes = ?,
-                    updated_by = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             ");
             $stmt->execute([
                 $_POST['product_description'],
-                $_POST['customer_name'],
+                $_POST['customer_id'],
                 $_POST['customer_part_number'],
                 $_POST['product_category'],
                 $_POST['status'],
@@ -190,7 +189,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
                 !empty($_POST['program_launch_date']) ? $_POST['program_launch_date'] : null,
                 !empty($_POST['program_end_date']) ? $_POST['program_end_date'] : null,
                 !empty($_POST['volume_notes']) ? $_POST['volume_notes'] : null,
-                $current_user['id'],
                 $_POST['product_id']
             ]);
             $message = 'Product updated successfully!';
@@ -207,10 +205,10 @@ try {
     $products = $pdo->query("
         SELECT p.*, 
                u1.full_name as created_by_name,
-               u2.full_name as updated_by_name
+               c.customer_name, c.customer_code
         FROM products p
         LEFT JOIN users u1 ON p.created_by = u1.id
-        LEFT JOIN users u2 ON p.updated_by = u2.id
+        LEFT JOIN customers c ON p.customer_id = c.id
         WHERE p.is_active = 1
         ORDER BY p.product_code
     ")->fetchAll();
@@ -218,6 +216,19 @@ try {
     $products = [];
     $message = 'Error loading products: ' . $e->getMessage();
     $message_type = 'error';
+}
+
+// Get customers for dropdown
+$customers = [];
+try {
+    $customers = $pdo->query("
+        SELECT id, customer_name, customer_code 
+        FROM customers 
+        WHERE is_active = 1 
+        ORDER BY customer_name
+    ")->fetchAll();
+} catch (Exception $e) {
+    // Handle error silently for now
 }
 
 // Get product for editing if requested
@@ -234,51 +245,10 @@ if (isset($_GET['edit']) && $can_manage) {
 }
 
 $page_title = 'Products Master';
+
+// Include header component
+include '../src/includes/header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $page_title; ?> - Mini ERP</title>
-    <link href="css/style.css" rel="stylesheet">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <div class="header-content">
-                <div class="header-left">
-                    <h1>Mini ERP - Manufacturing System</h1>
-                    <p class="subtitle">Phase 2: Manufacturing Operations</p>
-                </div>
-                <div class="header-right">
-                    <span class="user-info">
-                        Welcome, <strong><?php echo htmlspecialchars($current_user['full_name']); ?></strong> 
-                        (<?php echo ucfirst(str_replace('_', ' ', $current_user['role'])); ?>)
-                    </span>
-                    <a href="logout.php" class="logout-btn">Logout</a>
-                </div>
-            </div>
-            <nav>
-                <ul>
-                    <li><a href="index.php">Dashboard</a></li>
-                    <li><a href="materials.php">Materials</a></li>
-                    <li><a href="inventory.php">Inventory</a></li>
-                    <li><a href="recipes.php">Recipes</a></li>
-                    <li><a href="products.php" class="active">Products</a></li>
-                    <li><a href="jobs.php">Production Jobs</a></li>
-                    <li><a href="traceability.php">Traceability</a></li>
-                    <?php if ($auth->hasRole(['admin', 'supervisor'])): ?>
-                    <li><a href="reports.php">Reports</a></li>
-                    <?php endif; ?>
-                    <?php if ($auth->hasRole(['admin'])): ?>
-                    <li><a href="admin.php">Admin</a></li>
-                    <?php endif; ?>
-                </ul>
-            </nav>
-        </header>
-        
-        <main>
             <h2><?php echo $page_title; ?></h2>
             
             <?php if ($message): ?>
@@ -314,10 +284,19 @@ $page_title = 'Products Master';
                     
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="customer_name">Customer:</label>
-                            <input type="text" id="customer_name" name="customer_name" 
-                                   value="<?php echo htmlspecialchars(isset($edit_product['customer_name']) ? $edit_product['customer_name'] : ''); ?>"
-                                   placeholder="Customer company name">
+                            <label for="customer_id">Customer:</label>
+                            <select id="customer_id" name="customer_id">
+                                <option value="">Select Customer (Optional)</option>
+                                <?php foreach ($customers as $customer): ?>
+                                    <option value="<?php echo $customer['id']; ?>" 
+                                            <?php echo (isset($edit_product['customer_id']) && $edit_product['customer_id'] == $customer['id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($customer['customer_name'] . ' (' . $customer['customer_code'] . ')'); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?php if (empty($customers)): ?>
+                                <small class="form-help">No customers found. Customers are optional for products.</small>
+                            <?php endif; ?>
                         </div>
                         <div class="form-group">
                             <label for="customer_part_number">Customer Part Number:</label>
@@ -479,7 +458,7 @@ $page_title = 'Products Master';
                                     <tr>
                                         <td class="product-code"><?php echo htmlspecialchars($product['product_code']); ?></td>
                                         <td class="product-description"><?php echo htmlspecialchars($product['product_description']); ?></td>
-                                        <td><?php echo htmlspecialchars($product['customer_name'] ? $product['customer_name'] : 'N/A'); ?></td>
+                                        <td><?php echo htmlspecialchars($product['customer_name'] ? $product['customer_name'] . ' (' . $product['customer_code'] . ')' : 'N/A'); ?></td>
                                         <td class="product-category">
                                             <?php echo ucfirst(str_replace('_', ' ', $product['product_category'])); ?>
                                         </td>
@@ -504,14 +483,7 @@ $page_title = 'Products Master';
                     </table>
                 </div>
             </div>
-        </main>
-        
-        <footer>
-            <p>&copy; 2025 Mini ERP System - Phase 2: Manufacturing Operations</p>
-        </footer>
-    </div>
-
-    <script>
+            <script>
         // Auto-calculate annual volume from monthly volume
         document.addEventListener('DOMContentLoaded', function() {
             const monthlyInput = document.getElementById('quoted_monthly_volume');
@@ -548,5 +520,7 @@ $page_title = 'Products Master';
             }
         });
     </script>
-</body>
-</html>
+<?php
+// Include footer component
+include '../src/includes/footer.php';
+?>

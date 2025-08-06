@@ -109,50 +109,10 @@ try {
 }
 
 $page_title = 'Recipes';
+
+// Include header component
+include '../src/includes/header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $page_title; ?> - Mini ERP</title>
-    <link href="css/style.css" rel="stylesheet">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <div class="header-content">
-                <div class="header-left">
-                    <h1>Mini ERP - Manufacturing System</h1>
-                    <p class="subtitle">Plastic Injection Molding Traceability</p>
-                </div>
-                <div class="header-right">
-                    <span class="user-info">
-                        Welcome, <strong><?php echo htmlspecialchars($current_user['full_name']); ?></strong> 
-                        (<?php echo ucfirst(str_replace('_', ' ', $current_user['role'])); ?>)
-                    </span>
-                    <a href="logout.php" class="logout-btn">Logout</a>
-                </div>
-            </div>
-            <nav>
-                <ul>
-                    <li><a href="index.php">Dashboard</a></li>
-                    <li><a href="materials.php">Materials</a></li>
-                    <li><a href="inventory.php">Inventory</a></li>
-                    <li><a href="recipes.php" class="active">Recipes</a></li>
-                    <li><a href="jobs.php">Production Jobs</a></li>
-                    <li><a href="traceability.php">Traceability</a></li>
-                    <?php if ($auth->hasRole(['admin', 'supervisor'])): ?>
-                    <li><a href="reports.php">Reports</a></li>
-                    <?php endif; ?>
-                    <?php if ($auth->hasRole(['admin'])): ?>
-                    <li><a href="admin.php">Admin</a></li>
-                    <?php endif; ?>
-                </ul>
-            </nav>
-        </header>
-        
-        <main>
             <h2><?php echo $page_title; ?> Management</h2>
             
             <?php if ($message): ?>
@@ -288,11 +248,7 @@ $page_title = 'Recipes';
                     </table>
                 </div>
             </div>
-        </main>
-        
-        <footer>
-            <p>&copy; 2025 Mini ERP System</p>
-        </footer>
-    </div>
-</body>
-</html>
+<?php
+// Include footer component
+include '../src/includes/footer.php';
+?>
