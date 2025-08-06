@@ -146,6 +146,17 @@ $page_title = $product ? $product['product_code'] . ' Details' : 'Product Detail
                             </div>
                         </div>
                         
+                        <?php if ($product['product_image_path']): ?>
+                            <div class="detail-item-full">
+                                <label>Product Image:</label>
+                                <div class="product-image-display">
+                                    <img src="<?php echo htmlspecialchars($product['product_image_path']); ?>" 
+                                         alt="<?php echo htmlspecialchars($product['product_description']); ?>" 
+                                         class="product-detail-image">
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                        
                         <?php if ($product['specifications']): ?>
                             <div class="detail-item-full">
                                 <label>Specifications:</label>

@@ -29,6 +29,39 @@ $message_type = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
     if (isset($_POST['add_product'])) {
         try {
+            // Handle image upload
+            $product_image_path = null;
+            if (isset($_FILES['product_image']) && $_FILES['product_image']['error'] === UPLOAD_ERR_OK) {
+                $upload_dir = 'uploads/products/';
+                $file_extension = strtolower(pathinfo($_FILES['product_image']['name'], PATHINFO_EXTENSION));
+                $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+                
+                if (in_array($file_extension, $allowed_extensions)) {
+                    $filename = uniqid('product_') . '.' . $file_extension;
+                    $upload_path = $upload_dir . $filename;
+                    
+                    if (move_uploaded_file($_FILES['product_image']['tmp_name'], $upload_path)) {
+                        $product_image_path = $upload_path;
+                    } else {
+                        $message = 'Product saved but image upload failed.';
+                        $message_type = 'error';
+                    }
+                } else {
+                    $message = 'Invalid file type. Please use JPG, PNG, GIF, or WebP format.';
+                    $message_type = 'error';
+                }
+            } elseif (isset($_FILES['product_image']) && $_FILES['product_image']['error'] !== UPLOAD_ERR_NO_FILE) {
+                $error_messages = [
+                    UPLOAD_ERR_INI_SIZE => 'File is too large (exceeds server limit)',
+                    UPLOAD_ERR_FORM_SIZE => 'File is too large (exceeds form limit)',
+                    UPLOAD_ERR_PARTIAL => 'File was only partially uploaded',
+                    UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder',
+                    UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk',
+                    UPLOAD_ERR_EXTENSION => 'Upload stopped by extension'
+                ];
+                $message = 'Upload error: ' . ($error_messages[$_FILES['product_image']['error']] ?? 'Unknown error');
+                $message_type = 'error';
+            }
             $stmt = $pdo->prepare("
                 INSERT INTO products (
                     product_code, 
@@ -38,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
                     product_category, 
                     status,
                     engineering_drawings_url,
+                    product_image_path,
                     specifications,
                     unit_of_measure,
                     quoted_monthly_volume,
@@ -48,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
                     program_end_date,
                     volume_notes,
                     created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $_POST['product_code'],
@@ -58,6 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
                 $_POST['product_category'],
                 $_POST['status'],
                 !empty($_POST['engineering_drawings_url']) ? $_POST['engineering_drawings_url'] : null,
+                $product_image_path,
                 !empty($_POST['specifications']) ? $_POST['specifications'] : null,
                 !empty($_POST['unit_of_measure']) ? $_POST['unit_of_measure'] : 'EA',
                 !empty($_POST['quoted_monthly_volume']) ? (int)$_POST['quoted_monthly_volume'] : null,
@@ -69,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
                 !empty($_POST['volume_notes']) ? $_POST['volume_notes'] : null,
                 $current_user['id']
             ]);
-            $message = 'Product added successfully!';
+            $message = 'Product added successfully!' . ($product_image_path ? ' Image uploaded.' : '');
             $message_type = 'success';
         } catch (Exception $e) {
             $message = 'Error adding product: ' . $e->getMessage();
@@ -79,6 +114,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
     
     if (isset($_POST['update_product'])) {
         try {
+            // Handle image upload for update
+            $product_image_path = $_POST['existing_image_path'] ?? null; // Keep existing image if no new upload
+            if (isset($_FILES['product_image']) && $_FILES['product_image']['error'] === UPLOAD_ERR_OK) {
+                $upload_dir = 'uploads/products/';
+                $file_extension = strtolower(pathinfo($_FILES['product_image']['name'], PATHINFO_EXTENSION));
+                $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+                
+                if (in_array($file_extension, $allowed_extensions)) {
+                    $filename = uniqid('product_') . '.' . $file_extension;
+                    $upload_path = $upload_dir . $filename;
+                    
+                    if (move_uploaded_file($_FILES['product_image']['tmp_name'], $upload_path)) {
+                        // Delete old image if it exists
+                        if ($product_image_path && file_exists($product_image_path)) {
+                            unlink($product_image_path);
+                        }
+                        $product_image_path = $upload_path;
+                    } else {
+                        $message = 'Error uploading image file.';
+                        $message_type = 'error';
+                    }
+                } else {
+                    $message = 'Invalid file type. Please use JPG, PNG, GIF, or WebP format.';
+                    $message_type = 'error';
+                }
+            } elseif (isset($_FILES['product_image']) && $_FILES['product_image']['error'] !== UPLOAD_ERR_NO_FILE) {
+                $error_messages = [
+                    UPLOAD_ERR_INI_SIZE => 'File is too large (exceeds server limit)',
+                    UPLOAD_ERR_FORM_SIZE => 'File is too large (exceeds form limit)',
+                    UPLOAD_ERR_PARTIAL => 'File was only partially uploaded',
+                    UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder',
+                    UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk',
+                    UPLOAD_ERR_EXTENSION => 'Upload stopped by extension'
+                ];
+                $message = 'Upload error: ' . ($error_messages[$_FILES['product_image']['error']] ?? 'Unknown error');
+                $message_type = 'error';
+            }
             $stmt = $pdo->prepare("
                 UPDATE products SET 
                     product_description = ?, 
@@ -87,6 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
                     product_category = ?, 
                     status = ?,
                     engineering_drawings_url = ?,
+                    product_image_path = ?,
                     specifications = ?,
                     unit_of_measure = ?,
                     quoted_monthly_volume = ?,
@@ -107,6 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
                 $_POST['product_category'],
                 $_POST['status'],
                 !empty($_POST['engineering_drawings_url']) ? $_POST['engineering_drawings_url'] : null,
+                $product_image_path,
                 !empty($_POST['specifications']) ? $_POST['specifications'] : null,
                 !empty($_POST['unit_of_measure']) ? $_POST['unit_of_measure'] : 'EA',
                 !empty($_POST['quoted_monthly_volume']) ? (int)$_POST['quoted_monthly_volume'] : null,
@@ -216,7 +290,8 @@ $page_title = 'Products Master';
             <?php if ($can_manage): ?>
             <div class="form-section">
                 <h3><?php echo $edit_product ? 'Edit Product' : 'Add New Product'; ?></h3>
-                <form method="POST" class="product-form">
+                <form method="POST" class="product-form" enctype="multipart/form-data">
+                    <input type="hidden" name="MAX_FILE_SIZE" value="2097152"> <!-- 2MB in bytes -->
                     <?php if ($edit_product): ?>
                         <input type="hidden" name="product_id" value="<?php echo $edit_product['id']; ?>">
                     <?php endif; ?>
@@ -266,9 +341,8 @@ $page_title = 'Products Master';
                         <div class="form-group">
                             <label for="status">Status:</label>
                             <select id="status" name="status" required>
-                                <option value="DEVELOPMENT" <?php echo (isset($edit_product['status']) && $edit_product['status'] === 'DEVELOPMENT') ? 'selected' : ''; ?>>Development</option>
                                 <option value="ACTIVE" <?php echo (isset($edit_product['status']) && $edit_product['status'] === 'ACTIVE') ? 'selected' : ''; ?>>Active</option>
-                                <option value="OBSOLETE" <?php echo (isset($edit_product['status']) && $edit_product['status'] === 'OBSOLETE') ? 'selected' : ''; ?>>Obsolete</option>
+                                <option value="BUILD-OUT" <?php echo (isset($edit_product['status']) && $edit_product['status'] === 'BUILD-OUT') ? 'selected' : ''; ?>>Build-Out</option>
                             </select>
                         </div>
                     </div>
@@ -289,6 +363,25 @@ $page_title = 'Products Master';
                                    value="<?php echo htmlspecialchars(isset($edit_product['engineering_drawings_url']) ? $edit_product['engineering_drawings_url'] : ''); ?>"
                                    placeholder="https://...">
                         </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="product_image">Product Image:</label>
+                            <input type="file" id="product_image" name="product_image" 
+                                   accept="image/jpeg,image/png,image/gif,image/webp">
+                            <small>JPG, PNG, GIF, or WebP formats. Max 2MB. Current upload will show error messages above if it fails.</small>
+                        </div>
+                        <?php if ($edit_product && $edit_product['product_image_path']): ?>
+                        <div class="form-group">
+                            <label>Current Image:</label>
+                            <div class="current-image-preview">
+                                <img src="<?php echo htmlspecialchars($edit_product['product_image_path']); ?>" 
+                                     alt="Current product image" style="max-width: 150px; max-height: 150px; border-radius: 5px;">
+                            </div>
+                            <input type="hidden" name="existing_image_path" value="<?php echo htmlspecialchars($edit_product['product_image_path']); ?>">
+                        </div>
+                        <?php endif; ?>
                     </div>
                     
                     <div class="form-group">
