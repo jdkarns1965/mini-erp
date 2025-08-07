@@ -33,8 +33,10 @@ $nav_items = [
     'business_partners' => [
         'label' => 'Business Partners',
         'items' => [
-            'suppliers' => ['label' => 'Suppliers', 'url' => 'suppliers.php'],
-            'customers' => ['label' => 'Customers', 'url' => 'customers.php']
+            'contact_management' => ['label' => 'Contact Management', 'url' => 'contact_management.php'],
+            'customers' => ['label' => 'Customers (Legacy)', 'url' => 'customers.php'],
+            'customers_enhanced' => ['label' => 'Enhanced Customers', 'url' => 'customers_enhanced.php'],
+            'suppliers' => ['label' => 'Suppliers (Legacy)', 'url' => 'suppliers.php']
         ]
     ]
 ];

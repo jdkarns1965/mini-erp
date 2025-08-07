@@ -7,9 +7,13 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../src/classes/Auth.php';
+require_once '../src/classes/Contact.php';
+require_once '../src/classes/Email.php';
 
 $db = new Database();
 $auth = new Auth($db);
+$contact = new Contact($db);
+$email = new Email($db);
 
 // Require authentication
 $auth->requireAuth('login.php');
@@ -28,6 +32,8 @@ $message_type = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
     if (isset($_POST['add_customer'])) {
         try {
+            $pdo->beginTransaction();
+            
             // Generate customer code
             $latest_customer = $pdo->query("SELECT customer_code FROM customers WHERE customer_code LIKE 'CUST%' ORDER BY customer_code DESC LIMIT 1")->fetch();
             if ($latest_customer) {
@@ -62,9 +68,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
                 $_POST['notes'] ?: null,
                 $current_user['id']
             ]);
+            
+            $customer_id = $pdo->lastInsertId();
+            
+            // Add primary email to email system if provided
+            if (!empty($_POST['email'])) {
+                $email_type = $_POST['email_type'] ?: 'contact';
+                $email->addCustomerEmail($customer_id, $_POST['email'], $email_type, 'Primary contact email', $current_user['id']);
+            }
+            
+            // Add additional emails if provided
+            if (!empty($_POST['additional_emails'])) {
+                $additional_emails = array_filter(array_map('trim', explode("\n", $_POST['additional_emails'])));
+                foreach ($additional_emails as $add_email) {
+                    if (Email::validateEmail($add_email) && !$email->customerEmailExists($customer_id, $add_email)) {
+                        $email->addCustomerEmail($customer_id, $add_email, 'department', 'Additional email', $current_user['id']);
+                    }
+                }
+            }
+            
+            $pdo->commit();
             $message = "Customer added successfully! Code: $customer_code";
             $message_type = 'success';
         } catch (Exception $e) {
+            $pdo->rollBack();
             $message = 'Error adding customer: ' . $e->getMessage();
             $message_type = 'error';
         }
@@ -122,7 +149,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_manage) {
 try {
     $customers = $pdo->query("
         SELECT c.*, u.full_name as created_by_name,
-               (SELECT COUNT(*) FROM products WHERE customer_id = c.id AND is_active = 1) as product_count
+               (SELECT COUNT(*) FROM products WHERE customer_id = c.id AND is_active = 1) as product_count,
+               (SELECT COUNT(*) FROM customer_emails WHERE customer_id = c.id AND is_active = 1) as email_count
         FROM customers c
         LEFT JOIN users u ON c.created_by = u.id
         ORDER BY c.customer_name
@@ -152,6 +180,12 @@ $page_title = 'Customers';
 include '../src/includes/header.php';
 ?>
             <h2><?php echo $page_title; ?> Management</h2>
+            
+            <div class="page-navigation">
+                <a href="customers.php" class="btn btn-primary">Basic Customer Form</a>
+                <a href="customers_enhanced.php" class="btn btn-secondary">Enhanced Contacts</a>
+                <a href="customers_with_emails.php" class="btn btn-secondary">Email Management</a>
+            </div>
             
             <?php if ($message): ?>
                 <div class="alert alert-<?php echo $message_type; ?>">
@@ -194,18 +228,38 @@ include '../src/includes/header.php';
                         </div>
                     </div>
                     
+                    <h4>Contact Information</h4>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="email">Email:</label>
+                            <label for="email">Primary Email:</label>
                             <input type="email" id="email" name="email" 
                                    value="<?php echo htmlspecialchars($edit_customer['email'] ?? ''); ?>"
                                    placeholder="contact@customer.com">
                         </div>
                         <div class="form-group">
+                            <label for="email_type">Email Type:</label>
+                            <select id="email_type" name="email_type">
+                                <option value="contact">Main Contact</option>
+                                <option value="department">Department Group</option>
+                                <option value="purchasing">Purchasing</option>
+                                <option value="quality">Quality</option>
+                                <option value="shipping">Shipping</option>
+                                <option value="billing">Billing</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
                             <label for="phone">Phone:</label>
                             <input type="tel" id="phone" name="phone" 
                                    value="<?php echo htmlspecialchars($edit_customer['phone'] ?? ''); ?>"
                                    placeholder="(555) 123-4567">
+                        </div>
+                        <div class="form-group">
+                            <label for="additional_emails">Additional Emails (one per line):</label>
+                            <textarea id="additional_emails" name="additional_emails" rows="3"
+                                      placeholder="department@customer.com&#10;purchasing@customer.com&#10;quality@customer.com"></textarea>
                         </div>
                     </div>
                     
@@ -314,6 +368,7 @@ include '../src/includes/header.php';
                                 <th>Contact</th>
                                 <th>Location</th>
                                 <th>Products</th>
+                                <th>Emails</th>
                                 <th>Credit Limit</th>
                                 <th>Status</th>
                                 <?php if ($can_manage): ?>
@@ -324,7 +379,7 @@ include '../src/includes/header.php';
                         <tbody>
                             <?php if (empty($customers)): ?>
                                 <tr>
-                                    <td colspan="<?php echo $can_manage ? '8' : '7'; ?>" class="no-data">No customers found</td>
+                                    <td colspan="<?php echo $can_manage ? '9' : '8'; ?>" class="no-data">No customers found</td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($customers as $customer): ?>
@@ -361,6 +416,9 @@ include '../src/includes/header.php';
                                             ?>
                                         </td>
                                         <td class="product-count"><?php echo $customer['product_count']; ?></td>
+                                        <td class="email-count">
+                                            <span class="badge"><?php echo $customer['email_count']; ?></span>
+                                        </td>
                                         <td>$<?php echo number_format($customer['credit_limit'], 2); ?></td>
                                         <td>
                                             <span class="status-badge status-<?php echo $customer['is_active'] ? 'active' : 'inactive'; ?>">
@@ -370,6 +428,8 @@ include '../src/includes/header.php';
                                         <?php if ($can_manage): ?>
                                         <td class="actions">
                                             <a href="customers.php?edit=<?php echo $customer['id']; ?>" class="btn btn-small btn-secondary">Edit</a>
+                                            <a href="customers_enhanced.php?view_contacts=<?php echo $customer['id']; ?>" class="btn btn-small btn-info">Contacts</a>
+                                            <a href="customers_with_emails.php?manage_emails=<?php echo $customer['id']; ?>" class="btn btn-small btn-success">Emails</a>
                                             <form method="POST" style="display: inline;">
                                                 <input type="hidden" name="customer_id" value="<?php echo $customer['id']; ?>">
                                                 <button type="submit" name="toggle_active" class="btn btn-small btn-<?php echo $customer['is_active'] ? 'warning' : 'success'; ?>">
@@ -385,6 +445,34 @@ include '../src/includes/header.php';
                     </table>
                 </div>
             </div>
+
+            <style>
+            .page-navigation {
+                margin: 20px 0;
+                padding: 15px;
+                background-color: #f8f9fa;
+                border-radius: 5px;
+                text-align: center;
+            }
+            .page-navigation .btn {
+                margin: 0 10px;
+            }
+            .email-count .badge {
+                background-color: #28a745;
+                color: white;
+                padding: 2px 8px;
+                border-radius: 50%;
+                font-size: 0.8em;
+                font-weight: bold;
+            }
+            .form-group textarea {
+                resize: vertical;
+            }
+            .actions .btn {
+                margin: 2px;
+            }
+            </style>
+
 <?php
 // Include footer component
 include '../src/includes/footer.php';

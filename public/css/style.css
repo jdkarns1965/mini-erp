@@ -184,6 +184,15 @@ nav a.active {
     content: ' ▼';
     font-size: 0.7em;
     opacity: 0.7;
+    transition: transform 0.2s ease;
+}
+
+.nav-dropdown.active > a:after {
+    transform: rotate(180deg);
+}
+
+.nav-dropdown > a {
+    cursor: pointer;
 }
 
 .dropdown-menu {
@@ -202,7 +211,8 @@ nav a.active {
     z-index: 1000;
 }
 
-.nav-dropdown:hover .dropdown-menu {
+.nav-dropdown:hover .dropdown-menu,
+.nav-dropdown.active .dropdown-menu {
     opacity: 1;
     visibility: visible;
     transform: translateY(0);
@@ -342,6 +352,30 @@ footer {
     color: #666;
 }
 
+/* Additional button fixes for different contexts */
+.entry-section .btn,
+.multi-entry-options .btn,
+.contact-management .btn,
+.email-management .btn {
+    display: inline-block !important;
+    width: auto !important;
+    min-width: 100px;
+    margin-right: 10px;
+}
+
+/* Form button group styling */
+.button-group {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+    flex-wrap: wrap;
+}
+
+.button-group .btn {
+    flex: none;
+    width: auto;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
     .header-content {
@@ -369,6 +403,20 @@ footer {
     
     .search-input {
         min-width: 100%;
+    }
+    
+    /* Mobile button adjustments */
+    .form-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .button-group {
+        flex-direction: column;
+    }
+    
+    .button-group .btn {
+        width: 100%;
     }
 }
 
@@ -594,6 +642,27 @@ footer {
     gap: 1rem;
     margin-top: 1.5rem;
     align-items: center;
+}
+
+/* Fix button widths - prevent full-width buttons */
+.form-actions .btn,
+form .btn:not(.btn-full-width) {
+    display: inline-block;
+    width: auto;
+    min-width: auto;
+    flex: none;
+}
+
+/* Specific fixes for add buttons */
+#add-email-field,
+.add-contact-btn,
+.add-email-btn,
+button[name="add_contact"],
+button[name="add_emails"] {
+    display: inline-block !important;
+    width: auto !important;
+    min-width: 120px;
+    flex: none;
 }
 
 .btn-primary {
